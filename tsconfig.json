@@ -1,0 +1,18 @@
+{
+    "compilerOptions": {
+        "rootDir": "./src",
+        "outDir": "./dist",
+        "allowJs": true,
+        "checkJs": false,
+        "target": "es2022",
+        "module": "esnext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "paths": {
+            "crcalc-js": ["./crcalc-js/cr.d.ts"]
+        }
+    },
+    "include": [
+        "./src/**/*"
+    ]
+}

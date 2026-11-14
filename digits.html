@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Negative Bases And Nonstandard Base Digits &ndash; MathyPieces</title>
+<style type="text/css">
+    body { font-family: Verdana, Arial, Helvetica, sans-serif; }
+    p.main {font-size: 2em; margin: 0.2em 0; }
+    input { font-size: inherit;}
+</style>
+<script type="module">
+window.onerror = alert;
+
+import { createDigitConfiguration, convert } from "./dist/digits.js";
+
+function updateDigitConfiguration() {
+    let digconf = document.getElementById("digconf").value;
+    let base = BigInt(document.getElementById("base").value);
+    let digits = {};
+    for (let digline of digconf.split(/[\r\n]+/)) {
+        if (digline == "")
+            continue;
+        if (digline.charAt(1) != "=")
+            throw new Error("Unsupported digit value: " + digline);
+        digits[digline.charAt(0)] = BigInt(digline.substring(2));
+    }
+    let conf = createDigitConfiguration(base, digits);
+    if (typeof (conf) != 'object') {
+        throw new Error(conf);
+    }
+    return conf;
+}
+
+window.onload = function () {
+    let base = document.getElementById("base");
+    base.onchange = function () {
+        document.getElementById("baselabel").innerText = Math.abs(Number(base.value));
+    }
+    document.getElementById("presetStandard").onclick = function () {
+        let b = Math.abs(Number(base.value));
+        let digconf = "";
+        for (let i = 0; i < b; i++) {
+            digconf += i.toString(36).toUpperCase() + "=" + i + "\n";
+        }
+        document.getElementById("digconf").value = digconf;
+        updateDigitConfiguration();
+    };
+    document.getElementById("presetSymmetric").onclick = function () {
+        let b = Math.abs(Number(base.value));
+        let positive = (b + 1) / 2 | 0;
+        let digconf = "";
+        for (let i = b - positive - 1; i >= 0; i--) {
+            digconf += (35 - i).toString(36).toUpperCase() + "=" + (-i - 1) + "\n";
+        }
+        for (let i = 0; i < positive; i++) {
+            digconf += i.toString(36).toUpperCase() + "=" + i + "\n";
+        }
+        document.getElementById("digconf").value = digconf;
+        updateDigitConfiguration();
+    };
+    document.getElementById("digform").onsubmit = function (e) {
+        e.preventDefault();
+        updateDigitConfiguration();
+    };
+
+    document.getElementById("form").onsubmit = function (e) {
+        e.preventDefault();
+        let conf = updateDigitConfiguration();
+        let result = "";
+        for (let line of document.getElementById("input").value.split(/[\r\n]+/)) {
+            if (line == "")
+                continue
+            result += convert(line, conf) + "\n";
+        }
+        document.getElementById("output").value = result;
+    };
+};
+</script>
+</head>
+<body>
+<h1>Negative Bases And Nonstandard Base Digits &ndash; MathyPieces</h1>
+<p>Inspired by <a href="https://www.youtube.com/watch?v=Bh7o_Q1O1NA">this YouTube video</a>, you can experiment here with negative
+    (integer) bases and/or negative-valued digits (like symmetric ternary), but can get totally crazy with choosing which digit values
+    you want, just like demonstrated in the video.</p>
+<div style="float:left; border: 1px solid black; padding: 1em; margin-right: 2em;">
+    <h2 style="margin-top: 0px">Digit values</h2>
+    <form id="digform">
+    <textarea id="digconf" style="width: 150px; height: 450px;">0=0
+1=1
+2=2
+3=3
+4=4
+5=5
+6=6
+7=7
+8=8
+9=9</textarea>
+    <p><input type="submit" value="Validate"></p>
+    </form>
+</div>
+<form id="form">
+<p><label><b>Base:</b> <input id="base" type="text" value="10" style="width:100px"></label> <input type="button" id="presetStandard" value="Standard digits"> <input type="button" id="presetSymmetric" value="Symmetric digits"></p>
+<p>Enter values in base <span id="baselabel">10</span> with standard digits (or copy from <a href="bases.html" target="_blank">Arbitrary Bases</a>)</p>
+<textarea id="input" style="width: 800px; height: 200px;">42</textarea>
+<p class="main"><input type="submit" value="Convert"></p>
+</form>
+<textarea id="output" style="width: 800px; height: 200px;">Result will appear here</textarea>
+</body>
+</html>
+
+<summary>
+</summary>

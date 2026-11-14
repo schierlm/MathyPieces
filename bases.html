@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Arbitrary Bases &ndash; MathyPieces</title>
+<style type="text/css">
+    body { font-family: Verdana, Arial, Helvetica, sans-serif; }
+    p.main {font-size: 2em; margin: 0.2em 0; }
+    input { font-size: inherit;}
+</style>
+<script type="importmap">
+{
+    "imports": {
+        "crcalc-js": "./crcalc-js/cr.min.js",
+        "cr-eval": "./dist/cr-eval.js",
+        "bases": "./dist/bases.js"
+    }
+}
+</script>
+<script type="module">
+window.onerror = alert;
+
+import { UnifiedReal } from "crcalc-js";
+import { crEval } from "cr-eval";
+import { toArbitraryBase } from "bases";
+
+window.onload = function () {
+    let basepresets = document.getElementById("basepresets");
+    let base = document.getElementById("base");
+    basepresets.onchange = function () {
+        base.value = basepresets.value;
+        basepresets.value = "";
+    };
+    let presets = document.getElementById("presets");
+    let expr = document.getElementById("expr");
+    presets.onchange = function () {
+        expr.value = presets.value;
+        presets.value = "";
+    };
+    document.getElementById("form").onsubmit = function (e) {
+        e.preventDefault();
+        let degreeMode = document.getElementById("degreeMode").checked;
+        let val = crEval(expr.value, degreeMode);
+        let baseVal = crEval(base.value, degreeMode);
+        let opts = {
+            showEllipsis: document.getElementById("showEllipsis").checked,
+            detectPeriod: document.getElementById("detectPeriod").checked,
+            maxDigits: document.getElementById("maxDigits").value,
+            compareDigits: document.getElementById("compareDigits").value
+        };
+        let result = toArbitraryBase(val, baseVal, opts);
+        let numResults = document.getElementById("numResults").value;
+        if (numResults > 1) {
+            let addend = crEval(document.getElementById("addend").value, degreeMode);
+            for (let i = 1; i < numResults; i++) {
+                val = val.add(addend);
+                result = result + "\n" + toArbitraryBase(val, baseVal, opts);
+            }
+        }
+        document.getElementById("output").value = result;
+    };
+};
+</script>
+</head>
+<body>
+<h1>Arbitrary Bases &ndash; MathyPieces</h1>
+<p>Most people know bases like decimal or hexadecimal, others have already computed in bases like ternary, but did you know you can use
+    any real number larger than 1 as as base (yes, base π is possible). Convert any Constructive Real to any base given by a second
+    Constructive Real. However, bases larger than 36 are not supported to keep the set of digits simple.
+    Note that, technically, negative bases (smaller than -1) are also possible, but are not (yet?) supported by this tool.</p>
+<p><i>Copy expressions from <a href="https://crcalc.js.org/calc.html" target="_blank">CRCalc</a> or select preset from dropdown.</i></p>
+<form id="form">
+<p><select id="presets">
+<option selected></option>
+<option>1000</option>
+<option>42</option>
+<option>e</option>
+<option>π</option>
+<option>sqrt(2)</option>
+<option>-666</option>
+<option>-π</option>
+</select> <label><b>Base:</b> <input id="base" type="text" value="10" style="width:100px"></label> <select id="basepresets">
+<option selected></option>
+<option>10</option>
+<option>2</option>
+<option>8</option>
+<option>16</option>
+<option>e</option>
+<option>π</option>
+<option>sqrt(2)</option>
+<option>sqrt(ln(11/4))</option>
+</select></p>
+<p class="main"><input id="expr" type="text" value="" style="width:500px">  <input type="submit" value="Run"></p>
+</form>
+<textarea id="output" style="width: 800px; height: 200px;">Result will appear here</textarea>
+<h2>Options</h2>
+<p><label><input type="checkbox" id="degreeMode"> Degree mode</label></p>
+<p><label><input type="checkbox" id="detectPeriod" checked> Detect period</label></p>
+<p><label><input type="checkbox" id="showEllipsis" checked> Show Ellipsis</label></p>
+<p>Calculate at most <input type="text" id="maxDigits" value="100"> digits after the decimal point</p>
+<p>Compare up to <input type="text" id="compareDigits" value="100"> decimal digits</p>
+<p>Compute <input type="text" id="numResults" value="1"> results by adding <input type="text" id="addend" value="1"> each time</p>
+</body>
+</html>
