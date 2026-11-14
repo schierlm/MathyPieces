@@ -1,0 +1,1025 @@
+/*
+ * Copyright 2025-2026 lll69
+ * Copyright 2026 Michael Schierl <schierlm@gmx.de>
+ *
+ * Based on <https://github.com/lll69/crcalc.js/blob/316633d45f1177a39c47b7fa742c1d53815bbea1/crcalc-web/src/calc_worker.ts>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import { BoundedRational, UnifiedReal } from "crcalc-js";
+const CONFIG_POWER = true;
+const CONFIG_SQRT = true;
+const CONFIG_FACT = true;
+const CONFIG_PI = true;
+const CONFIG_E = true;
+const CONFIG_LN = true;
+const CONFIG_LOG = true;
+const CONFIG_EXP = true;
+const CONFIG_TRIG = true;
+const CONFIG_TRIG_INV = true;
+const CONFIG_HYP = true;
+const CONFIG_HYP_INV = true;
+const CONFIG_VARIABLES = true;
+const CONFIG_CUSTOM_FUNCTIONS = true;
+const STRICT_EXPR = true;
+const UR_E = UnifiedReal.E;
+const UR_LN10 = UnifiedReal.TEN.ln();
+const UR_RADIANS_PER_DEGREE = UnifiedReal.RADIANS_PER_DEGREE;
+const cachedURMap = new Map();
+const negateMap = new Map();
+const factMap = new Map();
+const sqrtMap = new Map();
+const lnMap = new Map();
+const sinMap = new Map();
+const cosMap = new Map();
+const tanMap = new Map();
+const asinMap = new Map();
+const acosMap = new Map();
+const atanMap = new Map();
+const addMap = new Map();
+const multiplyMap = new Map();
+const divideMap = new Map();
+const powBIMap = new Map();
+const powURMap = new Map();
+const freezeObject = Object.freeze;
+const functions = freezeObject(new Set([
+    "ln", "log", "exp", "sqrt",
+    "sin", "cos", "tan",
+    "asin", "acos", "atan",
+    "arcsin", "arccos", "arctan",
+    "sinh", "cosh", "tanh",
+    "asinh", "acosh", "atanh",
+    "F", "G", "H",
+    "f", "g", "h",
+]));
+const unaryOps = freezeObject(new Set([
+    "unary+", "unary-", "unary+pow", "unary-pow", "!"
+]));
+const binaryOps = freezeObject(new Set([
+    "+", "-", "*", "/", "^"
+]));
+function getURFromStr(str) {
+    let cached = cachedURMap.get(str);
+    if (cached === undefined) {
+        cached = UnifiedReal.newBR(BoundedRational.valueOfS(str));
+        cachedURMap.set(str, cached);
+    }
+    return cached;
+}
+function getURFromBI(bi) {
+    let cached = cachedURMap.get(bi);
+    if (cached === undefined) {
+        cached = UnifiedReal.newN(bi);
+        cachedURMap.set(bi, cached);
+    }
+    return cached;
+}
+function getNegate(ur) {
+    let cached = negateMap.get(ur);
+    if (cached === undefined) {
+        cached = ur.negate();
+        negateMap.set(ur, cached);
+        negateMap.set(cached, ur);
+    }
+    return cached;
+}
+function getFact(ur) {
+    let cached = factMap.get(ur);
+    if (cached === undefined) {
+        cached = ur.fact();
+        factMap.set(ur, cached);
+    }
+    return cached;
+}
+function getSqrt(ur) {
+    let cached = sqrtMap.get(ur);
+    if (cached === undefined) {
+        cached = ur.sqrt();
+        sqrtMap.set(ur, cached);
+    }
+    return cached;
+}
+function getLn(ur) {
+    let cached = lnMap.get(ur);
+    if (cached === undefined) {
+        cached = ur.ln();
+        lnMap.set(ur, cached);
+    }
+    return cached;
+}
+function getSin(ur) {
+    let cached = sinMap.get(ur);
+    if (cached === undefined) {
+        cached = ur.sin();
+        sinMap.set(ur, cached);
+    }
+    return cached;
+}
+function getCos(ur) {
+    let cached = cosMap.get(ur);
+    if (cached === undefined) {
+        cached = ur.cos();
+        cosMap.set(ur, cached);
+    }
+    return cached;
+}
+function getTan(ur) {
+    let cached = tanMap.get(ur);
+    if (cached === undefined) {
+        cached = ur.tan();
+        tanMap.set(ur, cached);
+    }
+    return cached;
+}
+function getASin(ur) {
+    let cached = asinMap.get(ur);
+    if (cached === undefined) {
+        cached = ur.asin();
+        asinMap.set(ur, cached);
+    }
+    return cached;
+}
+function getACos(ur) {
+    let cached = acosMap.get(ur);
+    if (cached === undefined) {
+        cached = ur.acos();
+        acosMap.set(ur, cached);
+    }
+    return cached;
+}
+function getATan(ur) {
+    let cached = atanMap.get(ur);
+    if (cached === undefined) {
+        cached = ur.atan();
+        atanMap.set(ur, cached);
+    }
+    return cached;
+}
+function getCachedMap(map, ur) {
+    let cachedMap = map.get(ur);
+    if (cachedMap === undefined) {
+        cachedMap = new Map();
+        map.set(ur, cachedMap);
+    }
+    return cachedMap;
+}
+function getAdd(arg0, arg1) {
+    const cachedMap = getCachedMap(addMap, arg0);
+    let cached = cachedMap.get(arg1);
+    if (cached === undefined) {
+        cached = arg0.add(arg1);
+        cachedMap.set(arg1, cached);
+        getCachedMap(addMap, arg1).set(arg0, cached);
+    }
+    return cached;
+}
+function getSub(arg0, arg1) {
+    return getAdd(arg0, getNegate(arg1));
+}
+function getMultiply(arg0, arg1) {
+    const cachedMap = getCachedMap(multiplyMap, arg0);
+    let cached = cachedMap.get(arg1);
+    if (cached === undefined) {
+        cached = arg0.multiply(arg1);
+        cachedMap.set(arg1, cached);
+        getCachedMap(multiplyMap, arg1).set(arg0, cached);
+    }
+    return cached;
+}
+function getDivide(arg0, arg1) {
+    const cachedMap = getCachedMap(divideMap, arg0);
+    let cached = cachedMap.get(arg1);
+    if (cached === undefined) {
+        cached = arg0.divide(arg1);
+        cachedMap.set(arg1, cached);
+    }
+    return cached;
+}
+function getPowBI(arg0, arg1) {
+    const cachedMap = getCachedMap(powBIMap, arg0);
+    let cached = cachedMap.get(arg1);
+    if (cached === undefined) {
+        cached = arg0 ** arg1;
+        cachedMap.set(arg1, cached);
+    }
+    return cached;
+}
+function getPowUR(arg0, arg1) {
+    const cachedMap = getCachedMap(powURMap, arg0);
+    let cached = cachedMap.get(arg1);
+    if (cached === undefined) {
+        if (arg0 === UR_E) {
+            cached = arg1.exp();
+        }
+        else {
+            cached = arg0.pow(arg1);
+        }
+        cachedMap.set(arg1, cached);
+    }
+    return cached;
+}
+function tokenize(expr) {
+    const result = [];
+    const locations = [];
+    let len = expr.length;
+    let i;
+    let ch, lastChar = "\0";
+    let unprocessed = "";
+    let lparenCount = 0;
+    for (i = 0; i < len; lastChar = ch, i++) {
+        ch = expr[i];
+        if (ch >= "0" && ch <= "9") {
+            if (lastChar === "\0" || lastChar === "." || (lastChar >= "0" && lastChar <= "9")) {
+                unprocessed += ch;
+            }
+            else if (lastChar === "!" || lastChar === ")" || lastChar === "\u03C0" || (lastChar >= "a" && lastChar <= "z")) {
+                result.push(unprocessed);
+                result.push("*");
+                locations.push(freezeObject([i - unprocessed.length, i]));
+                locations.push(freezeObject([i, i]));
+                unprocessed = ch;
+            }
+            else if (lastChar === "(" || lastChar === "^" || lastChar === "+" || lastChar === "-"
+                || lastChar === "*" || lastChar === "/" || lastChar === "\u00D7" || lastChar === "\u00F7") {
+                unprocessed = ch;
+            }
+            else {
+                throw new Error("Invalid lastChar '" + lastChar + "' at position (" + i + ")");
+            }
+        }
+        else if (ch >= "a" && ch <= "z" || ch === "\u03C0") {
+            if (lastChar === "\0" || lastChar === "\u03C0" || (lastChar >= "a" && lastChar <= "z")) {
+                unprocessed += ch;
+            }
+            else if (lastChar === "!" || lastChar === ")"
+                || lastChar === "." || (lastChar >= "0" && lastChar <= "9")) {
+                result.push(unprocessed);
+                result.push("*");
+                locations.push(freezeObject([i - unprocessed.length, i]));
+                locations.push(freezeObject([i, i]));
+                unprocessed = ch;
+            }
+            else if (lastChar === "(" || lastChar === "^" || lastChar === "+" || lastChar === "-"
+                || lastChar === "*" || lastChar === "/" || lastChar === "\u00D7" || lastChar === "\u00F7") {
+                unprocessed = ch;
+            }
+            else {
+                throw new Error("Invalid lastChar '" + lastChar + "' at position (" + i + ")");
+            }
+        }
+        else if (ch === ".") {
+            if (lastChar === "\0" || (lastChar >= "0" && lastChar <= "9")) {
+                if (unprocessed.indexOf(".") >= 0) {
+                    throw new Error("Invalid char '.' at position (" + i + ")");
+                }
+                unprocessed += ".";
+            }
+            else if (lastChar === "!" || lastChar === ")" || lastChar === "\u03C0"
+                || (lastChar >= "a" && lastChar <= "z")) {
+                result.push(unprocessed);
+                result.push("*");
+                locations.push(freezeObject([i - unprocessed.length, i]));
+                locations.push(freezeObject([i, i]));
+                unprocessed = ".";
+            }
+            else if (lastChar === "(" || lastChar === "^" || lastChar === "+" || lastChar === "-"
+                || lastChar === "*" || lastChar === "/" || lastChar === "\u00D7" || lastChar === "\u00F7") {
+                unprocessed = ".";
+            }
+            else if (lastChar === ".") {
+                throw new Error("Invalid char '.' at position (" + i + ")");
+            }
+            else {
+                throw new Error("Invalid lastChar '" + lastChar + "' at position (" + i + ")");
+            }
+        }
+        else if (ch === "+" || ch === "-") {
+            if (lastChar === "." || lastChar === "!" || lastChar === ")" || lastChar === "\u03C0"
+                || (lastChar >= "a" && lastChar <= "z") || (lastChar >= "0" && lastChar <= "9")) {
+                result.push(unprocessed);
+                result.push(ch);
+                locations.push(freezeObject([i - unprocessed.length, i]));
+                locations.push(freezeObject([i, i + 1]));
+                unprocessed = "";
+            }
+            else if (lastChar === "\0" || lastChar === "(" || lastChar === "^"
+                || lastChar === "+" || lastChar === "-" || lastChar === "*"
+                || lastChar === "/" || lastChar === "\u00D7" || lastChar === "\u00F7") {
+                if (STRICT_EXPR && (lastChar === "^" || lastChar === "+" || lastChar === "-")) {
+                    throw new Error("Missing '(' before '" + ch + "' at position (" + i + ")");
+                }
+                result.push((lastChar === "^") ? ("unary" + ch + "pow") : ("unary" + ch));
+                locations.push(freezeObject([i, i + 1]));
+                unprocessed = "";
+            }
+            else {
+                throw new Error("Invalid lastChar '" + lastChar + "' at position (" + i + ")");
+            }
+        }
+        else if (ch === "*" || ch === "\u00D7") {
+            if (lastChar === "." || lastChar === "!" || lastChar === ")" || lastChar === "\u03C0"
+                || (lastChar >= "a" && lastChar <= "z") || (lastChar >= "0" && lastChar <= "9")) {
+                result.push(unprocessed);
+                result.push("*");
+                locations.push(freezeObject([i - unprocessed.length, i]));
+                locations.push(freezeObject([i, i + 1]));
+                unprocessed = "";
+            }
+            else if (lastChar === "\0" || lastChar === "(" || lastChar === "^"
+                || lastChar === "+" || lastChar === "-" || lastChar === "*"
+                || lastChar === "/" || lastChar === "\u00D7" || lastChar === "\u00F7") {
+                throw new Error("Invalid char '" + ch + "' at position (" + i + ")");
+            }
+            else {
+                throw new Error("Invalid lastChar '" + lastChar + "' at position (" + i + ")");
+            }
+        }
+        else if (ch === "/" || ch === "\u00F7") {
+            if (lastChar === "." || lastChar === "!" || lastChar === ")" || lastChar === "\u03C0"
+                || (lastChar >= "a" && lastChar <= "z") || (lastChar >= "0" && lastChar <= "9")) {
+                result.push(unprocessed);
+                result.push("/");
+                locations.push(freezeObject([i - unprocessed.length, i]));
+                locations.push(freezeObject([i, i + 1]));
+                unprocessed = "";
+            }
+            else if (lastChar === "\0" || lastChar === "(" || lastChar === "^"
+                || lastChar === "+" || lastChar === "-" || lastChar === "*"
+                || lastChar === "/" || lastChar === "\u00D7" || lastChar === "\u00F7") {
+                throw new Error("Invalid char '" + ch + "' at position (" + i + ")");
+            }
+            else {
+                throw new Error("Invalid lastChar '" + lastChar + "' at position (" + i + ")");
+            }
+        }
+        else if (ch === "^") {
+            if (lastChar === "." || lastChar === "!" || lastChar === ")" || lastChar === "\u03C0"
+                || (lastChar >= "a" && lastChar <= "z") || (lastChar >= "0" && lastChar <= "9")) {
+                result.push(unprocessed);
+                result.push("^");
+                locations.push(freezeObject([i - unprocessed.length, i]));
+                locations.push(freezeObject([i, i + 1]));
+                unprocessed = "";
+            }
+            else if (lastChar === "\0" || lastChar === "(" || lastChar === "^"
+                || lastChar === "+" || lastChar === "-" || lastChar === "*"
+                || lastChar === "/" || lastChar === "\u00D7" || lastChar === "\u00F7") {
+                throw new Error("Invalid char '^' at position (" + i + ")");
+            }
+            else {
+                throw new Error("Invalid lastChar '" + lastChar + "' at position (" + i + ")");
+            }
+        }
+        else if (ch === "(") {
+            if (lastChar === "\0" || lastChar === "(" || lastChar === "^" || lastChar === "+" || lastChar === "-"
+                || lastChar === "*" || lastChar === "/" || lastChar === "\u00D7" || lastChar === "\u00F7") {
+                result.push("(");
+                locations.push(freezeObject([i, i + 1]));
+                unprocessed = "";
+            }
+            else if (lastChar === "." || lastChar === "!" || lastChar === ")"
+                || (lastChar >= "0" && lastChar <= "9")) {
+                result.push(unprocessed);
+                result.push("*");
+                result.push("(");
+                locations.push(freezeObject([i - unprocessed.length, i]));
+                locations.push(freezeObject([i, i]));
+                locations.push(freezeObject([i, i + 1]));
+                unprocessed = "";
+            }
+            else if (lastChar === "\u03C0" || (lastChar >= "a" && lastChar <= "z")) {
+                result.push(unprocessed);
+                result.push("(");
+                locations.push(freezeObject([i - unprocessed.length, i]));
+                locations.push(freezeObject([i, i + 1]));
+                unprocessed = "";
+            }
+            else {
+                throw new Error("Invalid lastChar '" + lastChar + "' at position (" + i + ")");
+            }
+            lparenCount++;
+        }
+        else if (ch === ")" || ch === "!") {
+            if (lastChar === "." || lastChar === "!" || lastChar === ")" || lastChar === "\u03C0"
+                || (lastChar >= "a" && lastChar <= "z") || (lastChar >= "0" && lastChar <= "9")) {
+                result.push(unprocessed);
+                result.push(ch);
+                locations.push(freezeObject([i - unprocessed.length, i]));
+                locations.push(freezeObject([i, i + 1]));
+                unprocessed = "";
+            }
+            else if (lastChar === "\0" || lastChar === "(" || lastChar === "^" || lastChar === "+" || lastChar === "-"
+                || lastChar === "*" || lastChar === "/" || lastChar === "\u00D7" || lastChar === "\u00F7") {
+                throw new Error("Invalid char '" + ch + "' at position (" + i + ")");
+            }
+            else {
+                throw new Error("Invalid lastChar '" + lastChar + "' at position (" + i + ")");
+            }
+            if (ch === ")") {
+                lparenCount--;
+                if (lparenCount < 0) {
+                    throw new Error("Invalid char ')' at position (" + i + ")");
+                }
+            }
+        }
+        else if (ch !== " ") {
+            throw new Error("Unknown char '" + ch + "' at position (" + i + ")");
+        }
+    }
+    if (unprocessed.length > 0) {
+        result.push(unprocessed);
+        locations.push(freezeObject([len - unprocessed.length, len]));
+    }
+    const finalResult = [];
+    const finalLocations = [];
+    len = result.length;
+    for (i = 0; i < len; i++) {
+        const token = result[i];
+        const loc = locations[i];
+        if (token !== "") {
+            if (token.length > 0 && token !== "unary+" && token !== "unary-" && token !== "unary+pow" && token !== "unary-pow") {
+                const firstChar = token[0];
+                if ((firstChar < "0" || firstChar > "9") && firstChar !== ".") {
+                    const lastChar = token[token.length - 1];
+                    let possibleName;
+                    if (token.length >= 6 && (lastChar === "n" || lastChar === "s")) {
+                        possibleName = token.substring(token.length - 6);
+                        if (possibleName === "arcsin" || possibleName === "arccos" || possibleName === "arctan") {
+                            const newItems = Array.prototype.slice.call(token, 0, token.length - 6).join("*");
+                            finalResult.push(...newItems);
+                            for (let j = 0; j < newItems.length; j++) {
+                                finalLocations.push(loc);
+                            }
+                            if (token.length > 6) {
+                                finalResult.push("*");
+                                finalLocations.push(loc);
+                            }
+                            finalResult.push(possibleName);
+                            finalLocations.push(loc);
+                            continue;
+                        }
+                    }
+                    if (token.length >= 5 && (lastChar === "h")) {
+                        possibleName = token.substring(token.length - 5);
+                        if (possibleName === "asinh" || possibleName === "acosh" || possibleName === "atanh") {
+                            const newItems = Array.prototype.slice.call(token, 0, token.length - 5).join("*");
+                            finalResult.push(...newItems);
+                            for (let j = 0; j < newItems.length; j++) {
+                                finalLocations.push(loc);
+                            }
+                            if (token.length > 5) {
+                                finalResult.push("*");
+                                finalLocations.push(loc);
+                            }
+                            finalResult.push(possibleName);
+                            finalLocations.push(loc);
+                            continue;
+                        }
+                    }
+                    if (token.length >= 4 && (lastChar === "n" || lastChar === "s" || lastChar === "t" || lastChar === "h")) {
+                        possibleName = token.substring(token.length - 4);
+                        if (possibleName === "asin" || possibleName === "acos" || possibleName === "atan" || possibleName === "sqrt"
+                            || possibleName === "sinh" || possibleName === "cosh" || possibleName === "tanh") {
+                            const newItems = Array.prototype.slice.call(token, 0, token.length - 4).join("*");
+                            finalResult.push(...newItems);
+                            for (let j = 0; j < newItems.length; j++) {
+                                finalLocations.push(loc);
+                            }
+                            if (token.length > 4) {
+                                finalResult.push("*");
+                                finalLocations.push(loc);
+                            }
+                            finalResult.push(possibleName);
+                            finalLocations.push(loc);
+                            continue;
+                        }
+                    }
+                    if (token.length >= 3 && (lastChar === "n" || lastChar === "s" || lastChar === "g" || lastChar === "p")) {
+                        possibleName = token.substring(token.length - 3);
+                        if (possibleName === "sin" || possibleName === "cos" || possibleName === "tan"
+                            || possibleName === "log" || possibleName === "exp") {
+                            const newItems = Array.prototype.slice.call(token, 0, token.length - 3).join("*");
+                            finalResult.push(...newItems);
+                            for (let j = 0; j < newItems.length; j++) {
+                                finalLocations.push(loc);
+                            }
+                            if (token.length > 3) {
+                                finalResult.push("*");
+                                finalLocations.push(loc);
+                            }
+                            finalResult.push(possibleName);
+                            finalLocations.push(loc);
+                            continue;
+                        }
+                    }
+                    if (token.length >= 2 && lastChar === "n") {
+                        possibleName = token.substring(token.length - 2);
+                        if (possibleName === "ln") {
+                            const newItems = Array.prototype.slice.call(token, 0, token.length - 2).join("*");
+                            finalResult.push(...newItems);
+                            for (let j = 0; j < newItems.length; j++) {
+                                finalLocations.push(loc);
+                            }
+                            if (token.length > 2) {
+                                finalResult.push("*");
+                                finalLocations.push(loc);
+                            }
+                            finalResult.push(possibleName);
+                            finalLocations.push(loc);
+                            continue;
+                        }
+                    }
+                    const newItems = Array.prototype.join.call(token, "*");
+                    finalResult.push(...newItems);
+                    for (let j = 0; j < newItems.length; j++) {
+                        finalLocations.push(loc);
+                    }
+                    continue;
+                }
+            }
+            finalResult.push(token);
+            finalLocations.push(loc);
+        }
+    }
+    if (lparenCount > 0) {
+        const lastLocation = freezeObject([expr.length, expr.length]);
+        while (lparenCount--) {
+            finalResult.push(")");
+            finalLocations.push(lastLocation);
+        }
+    }
+    return { tokens: finalResult, locations: finalLocations };
+}
+function tokenToRpn(tokenizeResult) {
+    const tokens = tokenizeResult.tokens;
+    const locations = tokenizeResult.locations;
+    const len = tokens.length;
+    const priority = freezeObject({
+        "!": 6,
+        "unary+pow": 5,
+        "unary-pow": 5,
+        "^": 4,
+        "unary+": 3,
+        "unary-": 3,
+        "*": 2,
+        "/": 2,
+        "+": 1,
+        "-": 1
+    });
+    const rightAssocList = freezeObject(new Set([
+        "unary+", "unary-", "unary+pow", "unary-pow", "^"
+    ]));
+    const output = [];
+    const stack = [];
+    for (let i = 0; i < len; i++) {
+        const token = tokens[i];
+        const loc = locations[i];
+        if (functions.has(token) || token === "(") {
+            stack.push(freezeObject([token, loc]));
+        }
+        else if (token === ")") {
+            while (stack.length > 0 && stack[stack.length - 1][0] !== "(") {
+                output.push(stack.pop());
+            }
+            if (stack.length === 0) {
+                throw new Error("Mismatched parentheses at position [" + loc + "]");
+            }
+            stack.pop();
+            if (stack.length > 0 && functions.has(stack[stack.length - 1][0])) {
+                output.push(stack.pop());
+            }
+        }
+        else if (priority.hasOwnProperty(token)) {
+            const currentPrio = priority[token];
+            const currentAssoc = rightAssocList.has(token);
+            while (stack.length > 0) {
+                const topToken = stack[stack.length - 1][0];
+                if (topToken === "(" || functions.has(topToken))
+                    break;
+                const topPrio = priority[topToken] || 0;
+                if (currentAssoc ? (topPrio > currentPrio) : (topPrio >= currentPrio)) {
+                    output.push(stack.pop());
+                }
+                else {
+                    break;
+                }
+            }
+            stack.push(freezeObject([token, loc]));
+        }
+        else {
+            output.push(freezeObject([token, loc]));
+        }
+    }
+    while (stack.length > 0) {
+        const top = stack.pop();
+        if (top[0] === "(") {
+            throw new Error("Mismatched parentheses at position [" + top[1] + "]");
+        }
+        output.push(top);
+    }
+    return output;
+}
+function urToBigInt(ur) {
+    if (ur.digitsRequiredByNumber() === 0) {
+        let asBI = ur.bigIntegerValue();
+        if (asBI === null) {
+            asBI = ur.crValue().get_appr(0); // Correct if it was an integer.
+            if (!ur.approxEquals(UnifiedReal.newN(asBI), -1000)) {
+                return null;
+            }
+        }
+        return asBI;
+    }
+    return null;
+}
+function preprocessRpnResult(rpnResult, degreeMode, variables, definedFunctions, noPosInError, isFunDef, overrideLoc) {
+    rpnResult = [...rpnResult];
+    for (let i = 0; i < rpnResult.length; i++) {
+        const rpnItem = rpnResult[i];
+        const token = rpnItem[0];
+        const locOrigin = rpnItem[1];
+        const loc = overrideLoc || locOrigin;
+        if (loc !== locOrigin) {
+            rpnResult[i] = freezeObject([token, loc]);
+        }
+        if (!binaryOps.has(token) && !unaryOps.has(token)) {
+            if (functions.has(token)) {
+                // Functions cannot be preprocessed before variables
+            }
+            else {
+                const firstChar = token[0];
+                if (firstChar === "." || (firstChar >= "0" && firstChar <= "9")) {
+                    // number
+                }
+                else if (CONFIG_E && token === "e") {
+                    // e
+                }
+                else if (CONFIG_PI && token === "\u03C0") {
+                    // pi
+                }
+                else {
+                    let hasVariable = false;
+                    if (CONFIG_CUSTOM_FUNCTIONS && isFunDef && token == "x") {
+                        hasVariable = true;
+                    }
+                    else if ((CONFIG_VARIABLES || (CONFIG_CUSTOM_FUNCTIONS && token == "x")) && variables) {
+                        switch (token) {
+                            case "a":
+                            case "b":
+                            case "c":
+                            case "i":
+                            case "j":
+                            case "k":
+                            case "m":
+                            case "n":
+                            case "x":
+                            case "y":
+                            case "z":
+                                let variableRpn = variables[token];
+                                if (variableRpn) {
+                                    if (variableRpn instanceof UnifiedReal) {
+                                        throw new Error("Unsupported UnifiedReal variable");
+                                    }
+                                    else {
+                                        hasVariable = true;
+                                        rpnResult.splice(i, 1, ...variableRpn);
+                                        i += variableRpn.length - 1;
+                                    }
+                                }
+                        }
+                    }
+                    if (!hasVariable)
+                        throw new Error("Unknown variable '" + token + "'" + (!noPosInError ? " at position [" + loc + "]" : ""));
+                }
+            }
+        }
+    }
+    // process functions && check expression
+    const stack = [];
+    for (let i = 0; i < rpnResult.length; i++) {
+        const rpnItem = rpnResult[i];
+        const token = rpnItem[0];
+        const loc = rpnItem[1];
+        if (binaryOps.has(token)) {
+            if (stack.length < 2) {
+                throw new Error("Insufficient number of parameters for operator '" + token + "'" + (!noPosInError ? " at position [" + loc + "]" : ""));
+            }
+            const arg1 = stack.pop();
+            const arg0 = stack.pop();
+            stack.push([...arg0, ...arg1, rpnItem]);
+        }
+        else if (unaryOps.has(token)) {
+            if (stack.length < 1) {
+                throw new Error("Insufficient number of parameters for operator '" + token + "'" + (!noPosInError ? " at position [" + loc + "]" : ""));
+            }
+            const arg0 = stack.pop();
+            stack.push([...arg0, rpnItem]);
+        }
+        else if (functions.has(token)) {
+            if (stack.length < 1) {
+                throw new Error("Insufficient number of parameters for function '" + token + "'" + (!noPosInError ? " at position [" + loc + "]" : ""));
+            }
+            let hasFunction = false;
+            if (CONFIG_CUSTOM_FUNCTIONS && definedFunctions) {
+                let funRpn = definedFunctions[token];
+                if (funRpn) {
+                    try {
+                        const arg0 = stack.pop();
+                        stack.push(preprocessRpnResult(funRpn, degreeMode, { x: arg0 }, undefined, true, false, loc));
+                        hasFunction = true;
+                    }
+                    catch (e) {
+                        console.error(e);
+                        throw new Error(e.message + (!noPosInError ? " at position [" + loc + "]" : ""));
+                    }
+                }
+            }
+            if (!hasFunction) {
+                const arg0 = stack.pop();
+                stack.push([...arg0, rpnItem]);
+            }
+        }
+        else {
+            // number / constants
+            stack.push([rpnItem]);
+        }
+    }
+    if (stack.length != 1) {
+        throw new Error("Invalid stack length: " + stack.length);
+    }
+    return stack.pop();
+}
+function createUR(expr, degreeMode, variables, definedFunctions, noPosInError) {
+    let rpnResult;
+    if (typeof expr == "string") {
+        const tokenizeResult = tokenize(expr);
+        rpnResult = tokenToRpn(tokenizeResult);
+    }
+    else if (expr instanceof UnifiedReal) {
+        return [expr, []];
+    }
+    else {
+        rpnResult = expr;
+    }
+    rpnResult = preprocessRpnResult(rpnResult, degreeMode, variables, definedFunctions, noPosInError);
+    const len = rpnResult.length;
+    const stack = [];
+    for (let i = 0; i < len; i++) {
+        const rpnItem = rpnResult[i];
+        const token = rpnItem[0];
+        const loc = rpnItem[1];
+        if (binaryOps.has(token)) {
+            if (stack.length < 2) {
+                throw new Error("Insufficient number of parameters for operator '" + token + "'" + (!noPosInError ? " at position [" + loc + "]" : ""));
+            }
+            const arg1 = stack.pop();
+            const arg0 = stack.pop();
+            try {
+                switch (token) {
+                    case "+":
+                        stack.push(getAdd(arg0, arg1));
+                        break;
+                    case "-":
+                        stack.push(getSub(arg0, arg1));
+                        break;
+                    case "*":
+                        stack.push(getMultiply(arg0, arg1));
+                        break;
+                    case "/":
+                        stack.push(getDivide(arg0, arg1));
+                        break;
+                    case "^": {
+                        if (!CONFIG_POWER) {
+                            throw new Error("Unsupported Operation: POWER");
+                        }
+                        if (arg0.digitsRequiredByNumber() === 0 && arg1.digitsRequiredByNumber() === 0) {
+                            const big0 = urToBigInt(arg0);
+                            const big1 = urToBigInt(arg1);
+                            if (big0 && big1 && big1 >= 0) {
+                                stack.push(getURFromBI(getPowBI(big0, big1)));
+                                break;
+                            }
+                        }
+                        stack.push(getPowUR(arg0, arg1));
+                        break;
+                    }
+                }
+            }
+            catch (e) {
+                console.error(e);
+                throw new Error(e.message + (!noPosInError ? " at position [" + loc + "]" : ""));
+            }
+        }
+        else if (unaryOps.has(token)) {
+            if (stack.length < 1) {
+                throw new Error("Insufficient number of parameters for operator '" + token + "'" + (!noPosInError ? " at position [" + loc + "]" : ""));
+            }
+            const arg0 = stack.pop();
+            try {
+                switch (token) {
+                    case "unary+":
+                    case "unary+pow":
+                        stack.push(arg0);
+                        break;
+                    case "unary-":
+                    case "unary-pow": {
+                        stack.push(getNegate(arg0));
+                        break;
+                    }
+                    case "!": {
+                        if (!CONFIG_FACT) {
+                            throw new Error("Unsupported Operation: FACT");
+                        }
+                        stack.push(getFact(arg0));
+                        break;
+                    }
+                }
+            }
+            catch (e) {
+                console.error(e);
+                throw new Error(e.message + (!noPosInError ? " at position [" + loc + "]" : ""));
+            }
+        }
+        else if (functions.has(token)) {
+            if (stack.length < 1) {
+                throw new Error("Insufficient number of parameters for function '" + token + "'" + (!noPosInError ? " at position [" + loc + "]" : ""));
+            }
+            const arg0 = stack.pop();
+            try {
+                switch (token) {
+                    case "ln":
+                        if (!CONFIG_LN) {
+                            throw new Error("Unsupported Operation: ln");
+                        }
+                        stack.push(getLn(arg0));
+                        break;
+                    case "log":
+                        if (!CONFIG_LOG) {
+                            throw new Error("Unsupported Operation: log");
+                        }
+                        stack.push(getDivide(getLn(arg0), UR_LN10));
+                        break;
+                    case "exp":
+                        if (!CONFIG_EXP) {
+                            throw new Error("Unsupported Operation: exp");
+                        }
+                        stack.push(getPowUR(UR_E, arg0));
+                        break;
+                    case "sqrt":
+                        if (!CONFIG_SQRT) {
+                            throw new Error("Unsupported Operation: sqrt");
+                        }
+                        stack.push(getSqrt(arg0));
+                        break;
+                    case "sin":
+                        if (!CONFIG_TRIG) {
+                            throw new Error("Unsupported Operation: sin");
+                        }
+                        if (degreeMode) {
+                            stack.push(getSin(getMultiply(arg0, UR_RADIANS_PER_DEGREE)));
+                        }
+                        else {
+                            stack.push(getSin(arg0));
+                        }
+                        break;
+                    case "cos":
+                        if (!CONFIG_TRIG) {
+                            throw new Error("Unsupported Operation: cos");
+                        }
+                        if (degreeMode) {
+                            stack.push(getCos(getMultiply(arg0, UR_RADIANS_PER_DEGREE)));
+                        }
+                        else {
+                            stack.push(getCos(arg0));
+                        }
+                        break;
+                    case "tan":
+                        if (!CONFIG_TRIG) {
+                            throw new Error("Unsupported Operation: tan");
+                        }
+                        if (degreeMode) {
+                            stack.push(getTan(getMultiply(arg0, UR_RADIANS_PER_DEGREE)));
+                        }
+                        else {
+                            stack.push(getTan(arg0));
+                        }
+                        break;
+                    case "asin":
+                    case "arcsin":
+                        if (!CONFIG_TRIG_INV) {
+                            throw new Error("Unsupported Operation: asin");
+                        }
+                        if (degreeMode) {
+                            stack.push(getDivide(getASin(arg0), UR_RADIANS_PER_DEGREE));
+                        }
+                        else {
+                            stack.push(getASin(arg0));
+                        }
+                        break;
+                    case "acos":
+                    case "arccos":
+                        if (!CONFIG_TRIG_INV) {
+                            throw new Error("Unsupported Operation: acos");
+                        }
+                        if (degreeMode) {
+                            stack.push(getDivide(getACos(arg0), UR_RADIANS_PER_DEGREE));
+                        }
+                        else {
+                            stack.push(getACos(arg0));
+                        }
+                        break;
+                    case "atan":
+                    case "arctan":
+                        if (!CONFIG_TRIG_INV) {
+                            throw new Error("Unsupported Operation: atan");
+                        }
+                        if (degreeMode) {
+                            stack.push(getDivide(getATan(arg0), UR_RADIANS_PER_DEGREE));
+                        }
+                        else {
+                            stack.push(getATan(arg0));
+                        }
+                        break;
+                    case "sinh":
+                        if (!CONFIG_HYP) {
+                            throw new Error("Unsupported Operation: sinh");
+                        }
+                        stack.push(getDivide(getSub(getPowUR(UR_E, arg0), getPowUR(UR_E, getNegate(arg0))), UnifiedReal.TWO));
+                        break;
+                    case "cosh":
+                        if (!CONFIG_HYP) {
+                            throw new Error("Unsupported Operation: cosh");
+                        }
+                        stack.push(getDivide(getAdd(getPowUR(UR_E, arg0), getPowUR(UR_E, getNegate(arg0))), UnifiedReal.TWO));
+                        break;
+                    case "tanh": {
+                        if (!CONFIG_HYP) {
+                            throw new Error("Unsupported Operation: tanh");
+                        }
+                        const t1 = getPowUR(UR_E, arg0);
+                        const t2 = getPowUR(UR_E, getNegate(arg0));
+                        stack.push(getDivide(getSub(t1, t2), getAdd(t1, t2)));
+                        break;
+                    }
+                    case "asinh":
+                        if (!CONFIG_HYP_INV) {
+                            throw new Error("Unsupported Operation: asinh");
+                        }
+                        stack.push(getLn(getAdd(arg0, getSqrt(getAdd(getMultiply(arg0, arg0), UnifiedReal.ONE)))));
+                        break;
+                    case "acosh":
+                        if (!CONFIG_HYP_INV) {
+                            throw new Error("Unsupported Operation: acosh");
+                        }
+                        stack.push(getLn(getAdd(arg0, getSqrt(getSub(getMultiply(arg0, arg0), UnifiedReal.ONE)))));
+                        break;
+                    case "atanh":
+                        if (!CONFIG_HYP_INV) {
+                            throw new Error("Unsupported Operation: atanh");
+                        }
+                        stack.push(getDivide(getLn(getDivide(getAdd(UnifiedReal.ONE, arg0), getSub(UnifiedReal.ONE, arg0))), UnifiedReal.TWO));
+                        break;
+                    default:
+                        throw new Error("Undefined Function: " + token);
+                }
+            }
+            catch (e) {
+                console.error(e);
+                throw new Error(e.message + (!noPosInError ? " at position [" + loc + "]" : ""));
+            }
+        }
+        else {
+            const firstChar = token[0];
+            if (firstChar === "." || (firstChar >= "0" && firstChar <= "9")) {
+                // number
+                stack.push(getURFromStr(firstChar === "." ? ("0" + token) : token));
+            }
+            else if (CONFIG_E && token === "e") {
+                stack.push(UR_E);
+            }
+            else if (CONFIG_PI && token === "\u03C0") {
+                stack.push(UnifiedReal.PI);
+            }
+            else {
+                throw new Error("Unknown variable '" + token + "'" + (!noPosInError ? " at position [" + loc + "]" : ""));
+            }
+        }
+    }
+    if (stack.length != 1) {
+        throw new Error("Invalid stack length: " + stack.length);
+    }
+    return [stack.pop(), rpnResult];
+}
+export function crEval(expr, degreeMode = false) {
+    return createUR(expr, degreeMode, undefined, undefined, false)[0];
+}

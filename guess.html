@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Expression Guesser &ndash; MathyPieces</title>
+<style type="text/css">
+    body { font-family: Verdana, Arial, Helvetica, sans-serif; }
+    p.main {font-size: 2em; margin: 0.2em 0; }
+    input { font-size: inherit;}
+</style>
+<script type="importmap">
+{
+    "imports": {
+        "crcalc-js": "./crcalc-js/cr.min.js",
+        "cr-eval": "./dist/cr-eval.js",
+        "cfrac": "./dist/cfrac.js",
+        "guess": "./dist/guess.js"
+    }
+}
+</script>
+<script type="module">
+window.onerror = alert;
+
+import { UnifiedReal } from "crcalc-js";
+import { crEval } from "cr-eval";
+import { ConstructedContinuedFractionBuilder, prettyPrintContinuedFractionHTML, toContinuedFraction } from "cfrac";
+import { doGuess, prettyPrintGuess, prettyPrintGuessMathML,  primeFactorization, prettyPrintFactorization, prettyPrintFactorizationMathML, NumberFormKind, NUMBER_FORMS } from "guess";
+
+window.onload = function () {
+    let presets = document.getElementById("presets");
+    let expr = document.getElementById("expr");
+    presets.onchange = function () {
+        expr.value = presets.value;
+        presets.value = "";
+    };
+    document.getElementById("form").onsubmit = function (e) {
+        e.preventDefault();
+        let details = document.getElementById("details");
+        let output = document.getElementById("output");
+        let mathml = document.getElementById("mathml");
+        output.innerHTML = details.innerHTML =  "Please wait...";
+        mathml.innerHTML = "";
+        setTimeout(function() {
+            let degreeMode = document.getElementById("degreeMode").checked;
+            let val = crEval(expr.value, degreeMode);
+
+            const opts = {
+                detectPeriod: true,
+                maxSteps: document.getElementById("maxSteps").value,
+                termLengthForInfinity: document.getElementById("termLength").value,
+                compareDigits: document.getElementById("compareDigits").value
+            };
+
+            const factory = {
+                int: UnifiedReal.newN,
+                sign: (x) => x.signumA(-opts.compareDigits),
+                pi: () => UnifiedReal.PI,
+                exp: (x) => x.exp(),
+                ln: (x) => x.ln(),
+                mul: (x, y) => x.multiply(y),
+                div: (x, y) => x.divide(y),
+                cfrac: (n) => new ConstructedContinuedFractionBuilder(n, opts)
+            };
+
+            let guess = doGuess(val, factory, opts.maxSteps);
+            let cfspan = prettyPrintContinuedFractionHTML(guess.cfrac);
+            if (guess.form.kind == NumberFormKind.NO_MATCH) {
+                output.innerHTML = "No match found.";
+                details.innerHTML = "Incomplete continued fraction: ";
+                details.appendChild(cfspan);
+            } else {
+                if (guess.form.kind == NumberFormKind.BASIC && guess.denominator == 1n && guess.factor == 0n) {
+                    let facts = primeFactorization(guess.numerator);
+                    output.innerHTML = "Exact integer: " + guess.numerator + "<br>Prime factors: " + prettyPrintFactorization(facts);
+                    mathml.appendChild(prettyPrintFactorizationMathML(facts));
+                } else {
+                    output.innerHTML = prettyPrintGuess(guess);
+                    mathml.innerHTML = "";
+                    mathml.appendChild(prettyPrintGuessMathML(guess));
+                }
+                details.innerHTML = "Form: " + guess.form.name + "<br>Continued fraction: ";
+                details.appendChild(cfspan);
+            }
+        }, 1);
+    };
+};
+</script>
+</head>
+<body>
+<h1>Expression Guesser &ndash; MathyPieces</h1>
+<p>Find, for a given Constructed Real, whether there is a simple expression that produces it. Supports expressions of the forms
+     <tt>x</tt>, <tt>√x</tt>, <tt>∛x</tt>, <tt>xπ</tt>, <tt>xπ²</tt>, <tt>x/π</tt>, <tt>x/π²</tt>,
+     <tt>e<sup>x</sup></tt>, <tt>2<sup>x</sup></tt>, <tt>10<sup>x</sup></tt>,
+     <tt>ln x</tt>, <tt>log<sub>2</sub> x</tt> and <tt>log<sub>10</sub> x</tt>,
+     where <tt>x</tt> is either rational or has a periodic continued fraction.
+     In case the expression is an integer, show its prime factorization as well.</p>
+<p><i>Copy expressions from <a href="https://crcalc.js.org/calc.html" target="_blank">CRCalc</a> or select preset from dropdown.</i></p>
+<form id="form">
+<p><select id="presets">
+<option selected></option>
+<option>666</option>
+<option>(1+sqrt(5))/2</option>
+<option>tan(atan(1)-2atan(1/4))</option>
+<option>sqrt(π)-24157817/39088169-sqrt(π)</option>
+<option>sqrt(3+2sqrt(2))</option>
+<option>(1+sqrt(5))/sqrt(2)-4sin(π/20)</option>
+<option>2atan(1/2)+asin(3/5)</option>
+<option>(25/49)^(1/6)</option>
+<option>atan(1)</option>
+<option>atan(1)^2</option>
+<option>1/atan(1)</option>
+<option>1/atan(1)^2</option>
+<option>sinh(42/23)+cosh(42/23)</option>
+<option>exp(3/5)</option>
+<option>2^(3/7)</option>
+<option>10^(5/11)</option>
+<option>ln(42)</option>
+<option>ln(24/7)/ln(2)</option>
+<option>log(5/13)</option>
+<option>π-sqrt(π)</option>
+</select></p>
+<p class="main"><input id="expr" type="text" value="" style="width:500px"> <input type="submit" value="Run"></p>
+<p id="output" style="font-style: italic;">Result will appear here</p>
+<div><div id="mathml" style="display: inline-block"></div></div>
+</form>
+<h2>Details</h2>
+<p id="details" style="font-style: italic;">Details will appear here</p>
+<h2>Options</h2>
+<p><label><input type="checkbox" id="degreeMode"> Degree mode</label></p>
+<p>Calculate at most <input type="text" id="maxSteps" value="75"> steps</p>
+<p>Treat bigints with more than <input type="text" id="termLength" value="500"> digits as infinity</p>
+<p>Compare up to <input type="text" id="compareDigits" value="100"> decimal digits</p>
+</body>
+</html>

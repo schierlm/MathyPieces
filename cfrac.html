@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Continued Fractions &ndash; MathyPieces</title>
+<style type="text/css">
+    body { font-family: Verdana, Arial, Helvetica, sans-serif; }
+    p.main {font-size: 2em; margin: 0.2em 0; }
+    input { font-size: inherit;}
+</style>
+<script type="importmap">
+{
+    "imports": {
+        "crcalc-js": "./crcalc-js/cr.min.js",
+        "cr-eval": "./dist/cr-eval.js",
+        "cfrac": "./dist/cfrac.js"
+    }
+}
+</script>
+<script type="module">
+window.onerror = alert;
+
+import { UnifiedReal } from "crcalc-js";
+import { crEval } from "cr-eval";
+import { prettyPrintContinuedFractionHTML, toContinuedFraction } from "cfrac";
+
+window.onload = function () {
+    let presets = document.getElementById("presets");
+    let expr = document.getElementById("expr");
+    presets.onchange = function () {
+        expr.value = presets.value;
+        presets.value = "";
+    };
+    document.getElementById("form").onsubmit = function (e) {
+        e.preventDefault();
+        let output = document.getElementById("output");
+        output.innerHTML = "Please wait...";
+        setTimeout(function() {
+            let degreeMode = document.getElementById("degreeMode").checked;
+            let val = crEval(expr.value, degreeMode);
+            let cf = toContinuedFraction(val, {
+                detectPeriod: document.getElementById("detectPeriod").checked,
+                maxSteps: document.getElementById("maxSteps").value,
+                termLengthForInfinity: document.getElementById("termLength").value,
+                compareDigits: document.getElementById("compareDigits").value
+            });
+            let span = prettyPrintContinuedFractionHTML(cf);
+            output.innerHTML = "Continued fraction: ";
+            output.appendChild(span);
+        }, 1);
+    };
+};
+</script>
+</head>
+<body>
+<h1>Continued Fractions &ndash; MathyPieces</h1>
+<p>Continued fractions are a form to examine real numbers.
+    Finite continued fractions represent rational numbers, and periodic continued fractions are a solution of a rational quadratic equation.
+    This page can take any Constructive Real and compute its continued fraction, detecting whether it is finite or periodic.</p>
+<p><i>Copy expressions from <a href="https://crcalc.js.org/calc.html" target="_blank">CRCalc</a> or select preset from dropdown.</i></p>
+<form id="form">
+<p><select id="presets">
+<option selected></option>
+<option>0</option>
+<option>(1+sqrt(5))/2</option>
+<option>tan(atan(1)-2atan(1/4))</option>
+<option>sqrt(π)-24157817/39088169-sqrt(π)</option>
+<option>π</option>
+</select></p>
+<p class="main"><input id="expr" type="text" value="" style="width:500px"> <input type="submit" value="Run"></p>
+<p id="output" style="font-style: italic;">Result will appear here</p>
+</form>
+<h2>Options</h2>
+<p><label><input type="checkbox" id="degreeMode"> Degree mode</label></p>
+<p><label><input type="checkbox" id="detectPeriod" checked> Detect period</label></p>
+<p>Calculate at most <input type="text" id="maxSteps" value="150"> steps</p>
+<p>Treat bigints with more than <input type="text" id="termLength" value="500"> digits as infinity</p>
+<p>Compare up to <input type="text" id="compareDigits" value="100"> decimal digits</p>
+</body>
+</html>
